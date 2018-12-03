@@ -1,15 +1,14 @@
 (ns advent-of-code-2018.day1.main
+  (:require [clojure.string :as cstr])
   (:gen-class))
 
 (defn read-input
   [filename]
-  (with-open [rdr (clojure.java.io/reader filename)]
-    (map (fn [n] (Integer/parseInt n))
-         (doall (line-seq rdr)))))
+  (map #(Integer/parseInt %) (cstr/split-lines (slurp filename))))
 
 (defn -pt1
   [& args]
-    (let [deltas (read-input "input.txt")]
+    (let [deltas (read-input "src/advent_of_code_2018/day1/input.txt")]
       (println (reduce + deltas))))
 
 (defn find-1st-repeated-state
