@@ -30,53 +30,34 @@
          y (range (:min-y bounds) (inc (:max-y bounds)))]
     [x y]))
 
-(defn update-grid-coord
-  [grid grid-coord coord]
-  (if-let [current-value (get grid grid-coord {})]
-    (let [{:keys [winner-coord dist] :or {dist Double/POSITIVE_INFINITY}} current-value
-          new-dist (manhattan coord grid-coord)]
-      (if (< new-dist dist)
-        (assoc grid grid-coord {:winner-coord coord :dist new-dist})
-        grid))
-  grid))
-
-(defn update-grid
-  [grid coord grid-coords]
-  (reduce (fn [acc grid-coord] (update-grid-coord acc grid-coord coord))
-          grid
-          grid-coords))
+(defn grid-cell-coord
+  [cell coords]
+  (let [[d1 d2 & rst] (sort (map #(manhattan cell %) coords))]
+    (if (= d1 d2)
+      Double/NEGATIVE_INFINITY
+      (apply min-key #(manhattan cell %) coords))))
 
 (defn get-area-around-coord
-  "Returns -inf for infinite areas"
   [cells-by-coord bounds coord]
   (if (some #(is-boundary? % bounds) (get cells-by-coord coord))
     Double/NEGATIVE_INFINITY
     (count (get cells-by-coord coord))))
 
-(defn pt1 []
-  (let [coords (read-input "src/advent_of_code_2018/day6/input.txt")
-        bounds (get-bounds coords)
-        grid-coords (gen-grid-coords bounds)
-        grid        (reduce (fn [acc coord] (update-grid acc coord grid-coords)) {} coords)
-        cells-by-coord (group-by (fn [grid-coord] (:winner-coord (get grid grid-coord))) grid-coords)
-        areas       (map #(get-area-around-coord cells-by-coord bounds %) coords)]
+(defn pt1
+  []
+  (let [coords         (read-input "src/advent_of_code_2018/day6/input.txt")
+        bounds         (get-bounds coords)
+        cells-by-coord (group-by (fn [cell] (grid-cell-coord cell coords)) (gen-grid-coords bounds))
+        areas          (map #(get-area-around-coord cells-by-coord bounds %) coords)]
     (println (apply max areas))))
 
-(defn update-grid-coord2
-  [grid grid-coord coord]
-  (let [current-value (get grid grid-coord 0)
-        new-dist (manhattan coord grid-coord)]
-      (assoc grid grid-coord (+ current-value new-dist))))
+(defn sum-of-dists
+  [cell coords]
+  (apply + (map #(manhattan cell %) coords)))
 
-(defn update-grid2
-  [grid coord grid-coords]
-  (reduce (fn [acc grid-coord] (update-grid-coord2 acc grid-coord coord))
-          grid
-          grid-coords))
-
-(defn pt2 []
+(defn pt2
+  []
   (let [coords (read-input "src/advent_of_code_2018/day6/input.txt")
         bounds (get-bounds coords)
-        grid-coords (gen-grid-coords bounds)
-        grid        (reduce (fn [acc coord] (update-grid2 acc coord grid-coords)) {} coords)]
-    (println (count (filter #(< % 10000) (vals grid))))))
+        sums   (map #(sum-of-dists % coords) (gen-grid-coords (get-bounds coords)))]
+    (println (count (filter #(< % 10000) sums)))))
