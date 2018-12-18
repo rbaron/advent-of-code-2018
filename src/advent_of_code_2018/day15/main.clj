@@ -22,7 +22,31 @@
          (for [y (range (count grid))
                x (range (count (first grid)))] [y x])))))
 
-(defn a* [[y0 x0] [y1 x1] grid]
+
+(def bfs (memoize (fn  [origin goal grid]
+
+  (defn search [queue seen]
+    (if (empty? queue)
+      (do #_(println 'empty) Double/POSITIVE_INFINITY)
+      (let [[[y x :as node] dist] (first queue)]
+        ;(println 'search2queue (into [] queue))
+        ;(println 'search2node node)
+        ;(println 'search2seen seen)
+        (if (contains? seen node)
+          (recur (pop queue) seen)
+          (if (= node goal)
+            (do #_(println 'found) dist)
+            (let [neighbors (get-neighbors y x grid :terrain)
+                  new-nodes (map (fn [[ny nx _]] [[ny nx] (inc dist)])
+                                 neighbors)]
+              (recur (into (pop queue) new-nodes)
+                     (into seen (conj new-nodes node)))))))))
+
+  (let [queue (conj clojure.lang.PersistentQueue/EMPTY [origin 0])]
+    (search queue (set [])))
+)))
+
+(def a* (memoize (fn  [[y0 x0] [y1 x1] grid]
   (def f-score (atom {}))
   (def g-score (atom {
     [y0 x0 (get-in grid [y0 x0])] 0
@@ -32,7 +56,7 @@
   (def closed (atom (set [])))
 
   (defn dist [[a b] [c d]]
-    0);(Math/sqrt (+ (Math/pow (- a c) 2) (Math/pow (- b d) 2))))
+    (Math/sqrt (+ (Math/pow (- a c) 2) (Math/pow (- b d) 2))))
 
   (defn reconstruct-path [[y x unit :as goal]]
     (if (= [y x] [y0 x0])
@@ -61,14 +85,16 @@
                     (swap! f-score   #(assoc % neighbor (+ tent-g (dist [ny nx] [y1 x1]))))))))
             ;(Thread/sleep 50)
             (recur))))))
-
-  (run))
+  (run))))
 
 (defn path-length [path]
   (if (nil? path)
     Double/POSITIVE_INFINITY
     (count path)))
 
+; Switch between BFS and A* shortest path implementation implementation
+;(defn afs [& args] (path-length (apply a* args)))
+(def afs bfs)
 
 (defn step-unit [[y x unit] grid]
   (def enemy-type (if (= :elf (:type unit)) :goblin :elf))
@@ -78,34 +104,39 @@
       (if (> (count enemies-in-range) 0)
         (let [[ey ex enemy]    (first (sort-by (fn [[ey ex e]] [(:hp e) ey ex]) enemies-in-range))
               new-hp (- (:hp enemy) 3)]
-          #_(println "[attack] Unit" (:type unit) "at" y x "will attack" ey ex new-hp)
+          (println "[attack] Unit" (:type unit) "at" y x "will attack" ey ex new-hp)
           (if (<= new-hp 0)
             (do #_(println "[remove] Will remove" ey ex) (assoc-in grid [ey ex] {:type :terrain}))
-            (do #_(println "will update in" ey ex new-hp) (update-in grid [ey ex] (fn [u] (assoc u :hp new-hp))))))
+            (update-in grid [ey ex] (fn [u] (assoc u :hp new-hp)))))
         grid)))
 
   (defn move []
     (let [enemy-type (if (= :elf (:type unit)) :goblin :elf)
           enemies  (get-units grid enemy-type)
-          ; Todo sort by a* distance and y x coord (composite)
           in-range (mapcat (fn [[y x unit]] (get-neighbors y x grid :terrain)) enemies)
-          sorted-in-range (sort-by (fn [[ny nx u]]
-            [(path-length (doall (a* [y x] [ny nx] grid))) ny nx]) in-range)
-          paths    (map (fn [[ey ex enemy]] (doall (a* [y x] [ey ex] grid))) in-range)
-          lengths (map (fn [[ny nx u]]
-            [(path-length (doall (a* [y x] [ny nx] grid))) ny nx]) in-range)
+          sorted-in-range (sort-by (fn [[ny nx u]] [ny nx]) in-range)
           ]
-      (if (every? #(nil? %) paths)
-        ; No path available  - turn is over
+      (if (empty? sorted-in-range)
         [y x grid]
-        (let [[ny nx spot] (first sorted-in-range)
-              [dy dx _] (first (sort-by
-                (fn [[my mx _]] [(path-length (a* [ny nx] [my mx] grid)) my mx])
-                (get-neighbors y x grid :terrain)))]
-          #_(println "[move] Unit" (:type unit) "will move to" dy dx "from" y x)
-          [dy dx (assoc-in (assoc-in grid [dy dx] unit)
-                    [y x]
-                    {:type :terrain})]))))
+        ;(let [path (apply min-key (fn [[ey ex enemy]] (path-length (a* [y x] [ey ex] grid))) (reverse sorted-in-range))
+        ;(let [path (apply min-key (fn [[ey ex enemy]] (bfs [y x] [ey ex] grid)) (reverse sorted-in-range))
+        (let [path (apply min-key (fn [[ey ex enemy]] (afs [y x] [ey ex] grid)) (reverse sorted-in-range))
+          neighbors  (get-neighbors y x grid :terrain)]
+          (if (or (nil? path) (empty? neighbors))
+            [y x grid]
+            (let [[ny nx _] path
+                  [dy dx _] (apply min-key
+                    ;(fn [[my mx _]] (path-length (a* [ny nx] [my mx] grid)))
+                    ;(fn [[my mx _]] (bfs [ny nx] [my mx] grid))
+                    (fn [[my mx _]] (afs [ny nx] [my mx] grid))
+                    (reverse neighbors))]
+              ;(if (not= Double/POSITIVE_INFINITY (bfs [dy dx] [ny nx] grid))
+              (if (not= Double/POSITIVE_INFINITY (afs [dy dx] [ny nx] grid))
+                (do (println "[move] Unit" (:type unit) "will move to" dy dx "from" y x)
+                    [dy dx (assoc-in (assoc-in grid [dy dx] unit)
+                                     [y x]
+                                     {:type :terrain})])
+                    [y x grid])))))))
 
   (let [new-grid (maybe-attack y x grid)]
     (if (= grid new-grid)
@@ -118,7 +149,7 @@
   (let [units (get-units grid :goblin :elf)]
     (reduce (fn [new-grid [y x unit]]
               ; Unit might have been killed earlier in this round
-              (println 'here)
+              #_(println 'here)
               (let [real-unit (get-in new-grid [y x])]
                 (if (= (:type real-unit) :terrain)
                   new-grid
@@ -162,8 +193,5 @@
         units             (get-units final-grid :elf :goblin)
         hps               (map (fn [[y x u]] (:hp u)) units)]
     (println (* (apply + hps) iter))))
-
-
-
 
 (pt1)
