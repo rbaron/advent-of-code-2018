@@ -96,14 +96,15 @@
 ;(defn afs [& args] (path-length (apply a* args)))
 (def afs bfs)
 
-(defn step-unit [[y x unit] grid]
+(defn step-unit [[y x unit] grid elf-damage]
   (def enemy-type (if (= :elf (:type unit)) :goblin :elf))
 
   (defn maybe-attack [y x grid]
     (let [enemies-in-range (get-neighbors y x grid enemy-type)]
       (if (> (count enemies-in-range) 0)
         (let [[ey ex enemy]    (first (sort-by (fn [[ey ex e]] [(:hp e) ey ex]) enemies-in-range))
-              new-hp (- (:hp enemy) 3)]
+              damage (if (= (:type unit) :elf) elf-damage 3)
+              new-hp (- (:hp enemy) damage)]
           (println "[attack] Unit" (:type unit) "at" y x "will attack" ey ex new-hp)
           (if (<= new-hp 0)
             (do #_(println "[remove] Will remove" ey ex) (assoc-in grid [ey ex] {:type :terrain}))
@@ -145,7 +146,7 @@
       new-grid))
 )
 
-(defn step [grid]
+(defn step [grid elf-damage]
   (let [units (get-units grid :goblin :elf)]
     (reduce (fn [new-grid [y x unit]]
               ; Unit might have been killed earlier in this round
@@ -153,7 +154,7 @@
               (let [real-unit (get-in new-grid [y x])]
                 (if (= (:type real-unit) :terrain)
                   new-grid
-                  (step-unit [y x unit] new-grid))))
+                  (step-unit [y x unit] new-grid elf-damage))))
             grid
             units)))
 
@@ -172,7 +173,7 @@
                   (println)
                   (println (cstr/join "\n" lines))))
 
-(defn simulate [grid iter]
+(defn simulate [grid iter elf-damage]
   (if (not (and (> (count (get-units grid :goblin)) 0)
                 (> (count (get-units grid :elf)) 0)))
     (do  (println "No more enemies. Iter" iter)
@@ -185,13 +186,36 @@
         ;(println (get-units grid :goblin :elf))
         ;(println (get-units grid :goblin :elf))
         ;(print-grid grid)
-        (recur (step grid) (inc iter)))))
+        (recur (step grid elf-damage) (inc iter) elf-damage))))
 
 (defn pt1 []
   (let [grid (read-input "src/advent_of_code_2018/day15/input.txt")
-        [final-grid iter] (simulate grid 0)
+        elf-damage        3
+        [final-grid iter] (simulate grid 0 elf-damage)
         units             (get-units final-grid :elf :goblin)
         hps               (map (fn [[y x u]] (:hp u)) units)]
     (println (* (apply + hps) iter))))
 
-(pt1)
+;(pt1)
+
+(defn simulate-pt2 [grid iter elf-damage]
+  (if (not (and (> (count (get-units grid :goblin)) 0)
+                (> (count (get-units grid :elf)) 0)))
+    (do  (println "No more enemies. Iter" iter)
+        [grid (dec iter) elf-damage])
+    (do (println iter)
+        (let [new-grid (step grid elf-damage)]
+          (if (not= (count (get-units grid :elf)) (count (get-units new-grid :elf)))
+            nil
+            (recur (step grid elf-damage) (inc iter) elf-damage))))))
+
+(defn pt2 []
+  (let [grid (read-input "src/advent_of_code_2018/day15/input.txt")
+        [final-grid iter elf-damage] (first (filter some?
+                                         (map (fn [elf-damage] (simulate-pt2 grid 0 elf-damage))
+                                                               (drop 3 (range)))))
+        units             (get-units final-grid :elf)
+        hps               (map (fn [[y x u]] (:hp u)) units)]
+    (println elf-damage (* (apply + hps) iter))))
+
+(pt2)
