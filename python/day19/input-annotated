@@ -1,0 +1,37 @@
+#ip 1           ; bind ip to r1
+addi 1 16 1     ; 0: r1 = r1 + 16; jmp to 17
+seti 1 2 5      ; 1: r5 = 1; r4 will have some large value
+seti 1 2 2      ; 2: r2 = 1
+mulr 5 2 3      ; 3: r3 = r5 * r2
+eqrr 3 4 3      ; 4: r3 = r3 == r4 == r5 * r2
+addr 3 1 1      ; 5: r1 = r3 + r1; jmp to 7 if r3 == r5 * r2 or 6
+addi 1 1 1      ; 6: r1 = r1 + 1; jmp to 8
+addr 5 0 0      ; 7: r0 = r0 + r5; single place where r0 is incremented only if r5 = r2
+addi 2 1 2      ; 8: r2 = r2 + 1
+gtrr 2 4 3      ; 9: r3 = r2 > r4
+addr 1 3 1      ;10: r1 = r1 + r3; jmp to 12 or 11
+seti 2 8 1      ;11: r1 = 2; jmp to 3
+addi 5 1 5      ;12: r5 = r5 + 1; single place where r5 is incremented
+gtrr 5 4 3      ;13: r3 = r5 > r4
+addr 3 1 1      ;14: r1 = r3 + r1; jmp to 16 or 15; HALT if r5 > r4
+seti 1 1 1      ;15: r1 = 1; jmp to 2
+mulr 1 1 1      ;16: r1 = r1 * r1; jmp to 16*16 + 1 => HALT
+addi 4 2 4      ;17: r4 = r4 + 2
+mulr 4 4 4      ;18: r4 = r4 * r4
+mulr 1 4 4      ;19: r4 = r1 * r4 = r4 * 19
+muli 4 11 4     ;20: r4 = r4 * 11
+addi 3 3 3      ;21: r3 = r3 + 3
+mulr 3 1 3      ;22: r3 = r3 * r1; r3 = 22 * r3
+addi 3 4 3      ;23: r3 = r3 + 4
+addr 4 3 4      ;24: r4 = r4 + r3
+addr 1 0 1      ;25: r1 = r1 + r0; jmp to r0 + 26; will jump to 27 for pt 2
+seti 0 0 1      ;26: r1 = 0; jmp to 1
+setr 1 5 3      ;27: r3 = r1 + 5; r3 = 27 + 5 = 32
+mulr 3 1 3      ;28: r3 = r3 * r1; r3 = 28 * r3
+addr 1 3 3      ;29: r3 = r1 + r3; r3 = r3 + 29
+mulr 1 3 3      ;30: r3 = r1 * r3; r3 = r3 * 30
+muli 3 14 3     ;31: r3 = r3 * 14
+mulr 3 1 3      ;32: r3 = r3 * r1 = r3 * 32
+addr 4 3 4      ;33: r4 = r4 + r3; 
+seti 0 0 0      ;34: r0 = 0
+seti 0 1 1      ;35: r1 = 0; jmp to 0
