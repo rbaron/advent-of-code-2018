@@ -7,11 +7,6 @@ def run_i(s, pgm):
     except IndexError:
         return False
 
-    # if op == "#ip":
-    #     s["bound"] = v[0]
-    #     s["ip"] += 1
-    #     return True
-
     if s["bound"] is not None:
         s[s["bound"]] = s["ip"]
     [a, b, o] = v
@@ -66,32 +61,38 @@ s = {
     "bound": pgm[0][1],
 }
 s.update({i: 0 for i in range(6)})
-_, *pgm = pgm
-# print(pgm, s)
 
+# Discard `#ip x` instruction for convenience.
+_, *pgm = pgm
+
+
+# Manually decompiled from `input-annotated`. Just a partial decompilation of the loops
+# that start at address 1, after r4 is set up.
 def decomp(s):
     while True:
         s[2] = 1
-        # will loop s[4] times, incrementing s[2] each time
+        # Will loop s[4] times, incrementing s[2] each time
         # r5 is fixed at 0, 1, 2, 3... and incremented once the loop ends
+        # r0 += r5 if r4 divisible by r2 and r5
         while True:
             if s[5] * s[2] == s[4]:
-                s[0] += s[5]    
+                s[0] += s[5]
             s[2] += 1
             if s[2] > s[4]:
                 s[5] += 1
             else:
                 continue
             if s[5] > s[4]:
-                print('FOUND!!', s[0])
+                print("FOUND!!", s[0])
                 return
             else:
                 break
 
+
+# Optimized version of `decomp`.
 def decomp2(s):
-    # return s[4]
-    # return list(i for i in range(s[4]))
-    s[0] = sum(i for i in range(1, s[4]+ 1) if s[4] % i == 0)
+    s[0] = sum(i for i in range(1, s[4] + 1) if s[4] % i == 0)
+
 
 # Part 2.
 s[0] = 1
@@ -100,45 +101,15 @@ p = False
 while True:
     try:
         op, a, b, o = pgm[s["ip"]]
+        # Once we jump into the part of the program that has been manually decompiled,
+        # we execute our optimized version instead.
         if s["ip"] == 1:
-            print('istr1', s)
+            print("istr1", s)
             decomp2(s)
             break
         if not run_i(s, pgm):
             break
     except IndexError:
         break
-    # try:
-        # op, a, b, o = pgm[s["ip"]]
-        # if s['ip'] == 1:
-        #     print(s)
-        # print(s[5])
-        # gtrr 2 4 3
-        # if op == 'gtrr' and a == 2 and b == 4 and s[4] == 10551306:
-        # if op == 'gtrr' and a == 2 and b == 4:
-        #     s[2] = s[4] + 1
-        #     # p = True
-        #     # print(s[5])
-        # if op == 'gtrr' and a == 5 and b == 4 and s[4] == 10551306:
-        # if op == 'gtrr' and a == 5 and b == 4:
-        #     s[5] = s[4] + 1
-        #     s[2] = s[5]
-        #     # print(s[5])
-        #     # p = True
-        # eqrr 3 4 3
-        # if op == 'eqrr' and a == 3 and b == 4 and s[4] == 10551306:
-        #     s[3] = s[4]
-        # gtrr 5 4 3
-        # if op == 'gtrr' and a == 5 and b == 4 and s[4] == 10551306:
-        #     s[5] = s[4] + 1
 
-    #     if p:
-    #         print(f"ip {s['ip']} {[s[i] for i in range(6)]} {pgm[s['ip']]}", end="")
-        # if not run_i(s, pgm):
-        #     break
-    #     if p:
-    #         print(f"{[s[i] for i in range(6)]}")
-    # except IndexError:
-    #     break
-
-print('Finished!', s[0])
+print("Finished!", s[0])
