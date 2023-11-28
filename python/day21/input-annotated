@@ -1,0 +1,43 @@
+#ip 4               ; r4 binds to ip
+seti 123 0 5        ;  0, r5 = 123
+bani 5 456 5        ;  1, r5 = r5 & 456
+eqri 5 72 5         ;  2, r5 = r5 == 72 (expected 123 & 456 == 72)
+addr 5 4 4          ;  3, jmp 5 if r5 == 72 or 4
+seti 0 0 4          ;  4, jmp 1
+seti 0 6 5          ;  5, r5 = 0
+r5 != r0:
+bori 5 65536 1      ;  6, r1 = r5 | 2**16 (set bit 16)
+seti 4591209 6 5    ;  7, r5 = 4591209
+r1 = r3:
+bani 1 255 3        ;  8, r3 = r1 & (2**8 - 1) (keeps lower 7 bits of r1)
+                    ;     r3 = r1 % 1<<8
+addr 5 3 5          ;  9, r5 = r5 + r3 (r5 += lower 7 bits of r1)
+bani 5 16777215 5   ; 10, r5 = r5 & (2**24 - 1) (keeps lower 23 bits)
+                    ;     r5 = r5 % 1<<24
+muli 5 65899 5      ; 11, r5 = r5 * (2**16 + 363)
+                    ;     r5 = r5 << 16 + r5 * 363
+bani 5 16777215 5   ; 12, r5 = r5 & (2**24 - 1) (keepd lower 23 bits)
+                    ;     r5 = r5 % 1<<24
+gtir 256 1 3        ; 13, r3 = 2**8 > r1
+addr 3 4 4          ; 14, jmp 16 if r1 < 2**8 else 15
+addi 4 1 4          ; 15, jmp 17
+r1 <= 1<<8:
+seti 27 7 4         ; 16, jmp 28
+r1 > 1<<8:
+seti 0 0 3          ; 17, r3 = 0
+r3++ (r2 <= r1):
+addi 3 1 2          ; 18, r2 = r3 + 1
+muli 2 256 2        ; 19, r2 = r2 * 2**8, r2 << 8
+gtrr 2 1 2          ; 20, r2 = r2 > r1
+addr 2 4 4          ; 21, jmp 23 if r2 > r1 else 22
+r2 <= r1
+addi 4 1 4          ; 22, jmp 24
+r2 > r1:
+seti 25 4 4         ; 23, jmp 26
+addi 3 1 3          ; 24, r3 = r3 + 1
+seti 17 0 4         ; 25, jmp 18
+setr 3 4 1          ; 26, r1 = r3
+seti 7 2 4          ; 27, jmp to 8
+eqrr 5 0 3          ; 28, r3 = r5 == r0
+addr 3 4 4          ; 29, HALT if r5 == r0 else jmp 30
+seti 5 1 4          ; 30, jmp 6
