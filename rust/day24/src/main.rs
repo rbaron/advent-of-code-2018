@@ -86,7 +86,7 @@ fn parse_group(
     let weak_patt = regex::Regex::new(r"weak to (?<weak>[^;\)]+)").unwrap();
     let imm_patt = regex::Regex::new(r"immune to (?<immune>[^;\)]+)").unwrap();
 
-    println!("Parsing line: {}", line);
+    // println!("Parsing line: {}", line);
 
     match patt.captures(line) {
         Some(caps) => {
@@ -185,7 +185,7 @@ fn target_selection<'a>(groups: &HashMap<usize, Group>) -> HashMap<usize, usize>
     target_by_attacker
 }
 
-fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, usize>) {
+fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, usize>) -> i32 {
     // Groups with no units cannot attack.
     let mut attacker_ids = groups
         .values()
@@ -194,6 +194,8 @@ fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, u
         .collect::<Vec<_>>();
 
     attacker_ids.sort_by_key(|g| Reverse(groups[g].initiative));
+
+    let mut total_units_killed = 0;
 
     for attacker_id in &attacker_ids {
         if let Some(target_id) = target_by_group.get(&attacker_id) {
@@ -207,17 +209,18 @@ fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, u
             let kill_units = attacker.kills_units(target);
             let target = groups.get_mut(target_id).unwrap();
             target.units -= kill_units;
+            total_units_killed += kill_units;
 
             let attacker = &groups[&attacker_id];
             let target = &groups[&target_id];
 
-            println!(
-                "{:?} attacks {:?} (deals {} damage), killing {} units",
-                attacker.global_id(),
-                target.global_id(),
-                damage,
-                kill_units
-            );
+            // println!(
+            //     "{:?} attacks {:?} (deals {} damage), killing {} units",
+            //     attacker.global_id(),
+            //     target.global_id(),
+            //     damage,
+            //     kill_units
+            // );
 
             if target.units <= 0 {
                 // Remove dead groups
@@ -225,6 +228,47 @@ fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, u
             }
         }
     }
+    total_units_killed
+}
+
+fn simulate(groups: &Vec<Group>, boost: i32) -> HashMap<GroupType, i32> {
+    let mut groups: HashMap<usize, Group> = groups
+        .iter()
+        .map(|g| {
+            let mut g = g.clone();
+            if g.group_type == GroupType::Immune {
+                g.attack_damage += boost;
+            }
+            (g.id, g)
+        })
+        .collect();
+    let mut counts = HashMap::new();
+
+    loop {
+        let sel = target_selection(&groups);
+        let total_units_killed = attack(&mut groups, &sel);
+        if total_units_killed == 0 {
+            // Stalemate.
+            break;
+        }
+        // println!();
+
+        // let groups_by_type = groups.iter().group_by(|(_, g)| g.group_type);
+        // let mut counts = HashMap::new();
+        counts.clear();
+        for g in groups.values() {
+            if g.units > 0 {
+                *counts.entry(g.group_type).or_insert(0) += g.units;
+                // println!("{:?}", g.units);
+            }
+        }
+
+        if counts.len() < 2 {
+            break;
+        }
+    }
+
+    counts
 }
 
 fn main() {
@@ -270,41 +314,31 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
-    // for g in &groups {
-    //     println!("{:?}", g);
-    // }
-    // return;
+    // let counts = simulate(&groups, 0);
+    // println!("{:?}", counts);
 
-    let mut groups: HashMap<usize, Group> = groups.into_iter().map(|g| (g.id, g)).collect();
-    let mut counts = HashMap::new();
+    // let counts = simulate(&groups, 0);
+    // println!("{:?}", counts);
+
+    let mut lo = 0;
+    let mut hi = 10000;
 
     loop {
-        let sel = target_selection(&groups);
-        attack(&mut groups, &sel);
-        println!();
-
-        // let groups_by_type = groups.iter().group_by(|(_, g)| g.group_type);
-        // let mut counts = HashMap::new();
-        counts.clear();
-        for g in groups.values() {
-            if g.units > 0 {
-                *counts.entry(g.group_type).or_insert(0) += g.units;
-                println!("{:?}", g.units);
-            }
-        }
-
-        // if counts[&GroupType::Immune] == 0 || counts[&GroupType::Infection] == 0 {
-        //     break;
-        // }
-        if counts.len() < 2 {
+        if lo == hi {
+            println!("Found: {}", lo);
             break;
         }
-        // Remove dead groups
-        // groups.retain(|_, g| g.units > 0);
+        let boost = (lo + hi) / 2;
+        println!("Trying boost: {} (range {}..={})", boost, lo, hi);
+        let counts = simulate(&groups, boost);
+        println!("  Result: {:?}", counts);
+
+        // Boost is sufficient.
+        if counts.contains_key(&GroupType::Immune) && !counts.contains_key(&GroupType::Infection) {
+            hi = boost;
+        // Boost is not sufficient.
+        } else {
+            lo = boost + 1;
+        }
     }
-
-    println!("{:?}", counts);
-
-    // 22973 too high
-    // 22904 too high
 }
