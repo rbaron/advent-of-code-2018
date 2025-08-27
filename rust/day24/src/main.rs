@@ -1,4 +1,3 @@
-use regex::Regex;
 use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet},
@@ -16,7 +15,6 @@ enum GroupType {
 struct Group {
     pub id: usize,
     pub group_type: GroupType,
-    pub group_pos: usize,
     pub units: i32,
     pub hit_points: i32,
     pub immunities: HashSet<String>,
@@ -25,9 +23,6 @@ struct Group {
     pub attach_type: String,
     pub initiative: i32,
 }
-
-// Implement Eq for Group
-impl Eq for Group {}
 
 impl Group {
     fn effective_power(&self) -> i32 {
@@ -52,33 +47,10 @@ impl Group {
             0
         }
     }
-
-    fn global_id(&self) -> (GroupType, usize) {
-        (self.group_type, self.group_pos)
-    }
 }
 
-impl PartialEq for Group {
-    fn eq(&self, other: &Self) -> bool {
-        self.global_id() == other.global_id()
-    }
-}
-
-impl Hash for Group {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.global_id().hash(state);
-    }
-}
-
-fn parse_group(
-    id: usize,
-    group_pos: usize,
-    group_type: GroupType,
-    line: &str,
-) -> Result<Group, String> {
+fn parse_group(id: usize, group_type: GroupType, line: &str) -> Result<Group, String> {
     let patt = regex::Regex::new(
-        // r"(?<units>\d+) units each with (?<hit_points>\d+) hit points \((immune to (?<immune>[^;]+))?(; )?(weak to (?<weak>.+))?\) with an attack that does (?<attack_damage>\d+) (?<attack_type>\w+) damage at initiative (?<initiative>\d+)",
-        // r"(?<units>\d+) units each with (?<hit_points>\d+) hit points (\((immune to (?<immune>[^;]+))?(; )?(weak to (?<weak>.+))?\) )?with an attack that does (?<attack_damage>\d+) (?<attack_type>\w+) damage at initiative (?<initiative>\d+)",
         r"(?<units>\d+) units each with (?<hit_points>\d+) hit points (.*)?with an attack that does (?<attack_damage>\d+) (?<attack_type>\w+) damage at initiative (?<initiative>\d+)",
     )
     .unwrap();
@@ -86,20 +58,8 @@ fn parse_group(
     let weak_patt = regex::Regex::new(r"weak to (?<weak>[^;\)]+)").unwrap();
     let imm_patt = regex::Regex::new(r"immune to (?<immune>[^;\)]+)").unwrap();
 
-    // println!("Parsing line: {}", line);
-
     match patt.captures(line) {
         Some(caps) => {
-            // for name in patt.capture_names().flatten() {
-            //     if let Some(m) = caps.name(name) {
-            //         println!("{} = {}", name, m.as_str());
-            //     }
-            // }
-
-            // let weak: Vec<String> = weak_patt
-            // .captures(line)
-
-            // Get ,-delimited list of weaknesses.
             let weak = weak_patt.captures(line);
             let weak: Vec<String> = weak
                 .map(|caps| caps["weak"].split(", ").map(String::from).collect())
@@ -113,18 +73,9 @@ fn parse_group(
             Ok(Group {
                 id,
                 group_type,
-                group_pos,
                 units: caps["units"].parse::<i32>().unwrap(),
                 hit_points: caps["hit_points"].parse::<i32>().unwrap(),
-                // immunities: match caps.name("immune") {
-                //     Some(m) => m.as_str().split(", ").map(String::from).collect(),
-                //     None => HashSet::new(),
-                // },
                 immunities: immun.into_iter().collect(),
-                // weaknesses: match caps.name("weak") {
-                //     Some(m) => m.as_str().split(", ").map(String::from).collect(),
-                //     None => HashSet::new(),
-                // },
                 weaknesses: weak.into_iter().collect(),
                 attack_damage: caps["attack_damage"].parse::<i32>().unwrap(),
                 attach_type: caps["attack_type"].to_string(),
@@ -204,24 +155,13 @@ fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, u
             }
             let attacker = &groups[attacker_id];
             let target = &groups[&target_by_group[&attacker.id]];
-            let damage = attacker.damage(target);
 
             let kill_units = attacker.kills_units(target);
             let target = groups.get_mut(target_id).unwrap();
             target.units -= kill_units;
             total_units_killed += kill_units;
 
-            let attacker = &groups[&attacker_id];
             let target = &groups[&target_id];
-
-            // println!(
-            //     "{:?} attacks {:?} (deals {} damage), killing {} units",
-            //     attacker.global_id(),
-            //     target.global_id(),
-            //     damage,
-            //     kill_units
-            // );
-
             if target.units <= 0 {
                 // Remove dead groups
                 groups.retain(|_, g| g.units > 0);
@@ -251,18 +191,12 @@ fn simulate(groups: &Vec<Group>, boost: i32) -> HashMap<GroupType, i32> {
             // Stalemate.
             break;
         }
-        // println!();
-
-        // let groups_by_type = groups.iter().group_by(|(_, g)| g.group_type);
-        // let mut counts = HashMap::new();
         counts.clear();
         for g in groups.values() {
             if g.units > 0 {
                 *counts.entry(g.group_type).or_insert(0) += g.units;
-                // println!("{:?}", g.units);
             }
         }
-
         if counts.len() < 2 {
             break;
         }
@@ -272,30 +206,11 @@ fn simulate(groups: &Vec<Group>, boost: i32) -> HashMap<GroupType, i32> {
 }
 
 fn main() {
-    // println!("Hello, world!");
-
     let filename = args().nth(1).expect("Please provide a filename");
     let contents = std::fs::read_to_string(filename).expect("Failed to read file");
 
-    // Split on \n\n.
     let groups: Vec<&str> = contents.split("\n\n").collect();
-
     assert_eq!(groups.len(), 2);
-
-    // let g = parse_group(
-    //     GroupType::Immune,
-    //     "17 units each with 5390 hit points (weak to radiation, bludgeoning) with an attack that does 4507 fire damage at initiative 2",
-    // )
-    // .unwrap();
-
-    // let groups = groups
-    //     .iter()
-    //     .zip(vec![GroupType::Immune, GroupType::Infection])
-    //     .map(|(block, group_type)| block.lines().skip(1).map(move |l| (group_type, l)))
-    //     .flatten()
-    //     .enumerate()
-    //     .map(|(id, (group_type, line))| parse_group(id, group_type, line).unwrap())
-    //     .collect::<Vec<_>>();
 
     let groups = groups
         .iter()
@@ -309,29 +224,20 @@ fn main() {
         })
         .flatten()
         .enumerate()
-        .map(|(id, (group_pos, group_type, line))| {
-            parse_group(id, group_pos, group_type, line).unwrap()
-        })
+        .map(|(id, (_group_pos, group_type, line))| parse_group(id, group_type, line).unwrap())
         .collect::<Vec<_>>();
 
-    // let counts = simulate(&groups, 0);
-    // println!("{:?}", counts);
-
-    // let counts = simulate(&groups, 0);
-    // println!("{:?}", counts);
+    let counts = simulate(&groups, 0);
+    println!("Part 1: {:?}", counts);
 
     let mut lo = 0;
     let mut hi = 10000;
-
     loop {
         if lo == hi {
-            println!("Found: {}", lo);
             break;
         }
         let boost = (lo + hi) / 2;
-        println!("Trying boost: {} (range {}..={})", boost, lo, hi);
         let counts = simulate(&groups, boost);
-        println!("  Result: {:?}", counts);
 
         // Boost is sufficient.
         if counts.contains_key(&GroupType::Immune) && !counts.contains_key(&GroupType::Infection) {
@@ -341,4 +247,10 @@ fn main() {
             lo = boost + 1;
         }
     }
+
+    println!(
+        "Part 2: Minimum boost: {}, remaining: {:?}",
+        lo,
+        simulate(&groups, lo)
+    );
 }
