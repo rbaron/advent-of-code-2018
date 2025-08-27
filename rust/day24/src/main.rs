@@ -78,9 +78,13 @@ fn parse_group(
 ) -> Result<Group, String> {
     let patt = regex::Regex::new(
         // r"(?<units>\d+) units each with (?<hit_points>\d+) hit points \((immune to (?<immune>[^;]+))?(; )?(weak to (?<weak>.+))?\) with an attack that does (?<attack_damage>\d+) (?<attack_type>\w+) damage at initiative (?<initiative>\d+)",
-        r"(?<units>\d+) units each with (?<hit_points>\d+) hit points (\((immune to (?<immune>[^;]+))?(; )?(weak to (?<weak>.+))?\) )?with an attack that does (?<attack_damage>\d+) (?<attack_type>\w+) damage at initiative (?<initiative>\d+)",
+        // r"(?<units>\d+) units each with (?<hit_points>\d+) hit points (\((immune to (?<immune>[^;]+))?(; )?(weak to (?<weak>.+))?\) )?with an attack that does (?<attack_damage>\d+) (?<attack_type>\w+) damage at initiative (?<initiative>\d+)",
+        r"(?<units>\d+) units each with (?<hit_points>\d+) hit points (.*)?with an attack that does (?<attack_damage>\d+) (?<attack_type>\w+) damage at initiative (?<initiative>\d+)",
     )
     .unwrap();
+
+    let weak_patt = regex::Regex::new(r"weak to (?<weak>[^;\)]+)").unwrap();
+    let imm_patt = regex::Regex::new(r"immune to (?<immune>[^;\)]+)").unwrap();
 
     println!("Parsing line: {}", line);
 
@@ -91,20 +95,37 @@ fn parse_group(
             //         println!("{} = {}", name, m.as_str());
             //     }
             // }
+
+            // let weak: Vec<String> = weak_patt
+            // .captures(line)
+
+            // Get ,-delimited list of weaknesses.
+            let weak = weak_patt.captures(line);
+            let weak: Vec<String> = weak
+                .map(|caps| caps["weak"].split(", ").map(String::from).collect())
+                .unwrap_or_default();
+
+            let immun = imm_patt.captures(line);
+            let immun: Vec<String> = immun
+                .map(|caps| caps["immune"].split(", ").map(String::from).collect())
+                .unwrap_or_default();
+
             Ok(Group {
                 id,
                 group_type,
                 group_pos,
                 units: caps["units"].parse::<i32>().unwrap(),
                 hit_points: caps["hit_points"].parse::<i32>().unwrap(),
-                immunities: match caps.name("immune") {
-                    Some(m) => m.as_str().split(", ").map(String::from).collect(),
-                    None => HashSet::new(),
-                },
-                weaknesses: match caps.name("weak") {
-                    Some(m) => m.as_str().split(", ").map(String::from).collect(),
-                    None => HashSet::new(),
-                },
+                // immunities: match caps.name("immune") {
+                //     Some(m) => m.as_str().split(", ").map(String::from).collect(),
+                //     None => HashSet::new(),
+                // },
+                immunities: immun.into_iter().collect(),
+                // weaknesses: match caps.name("weak") {
+                //     Some(m) => m.as_str().split(", ").map(String::from).collect(),
+                //     None => HashSet::new(),
+                // },
+                weaknesses: weak.into_iter().collect(),
                 attack_damage: caps["attack_damage"].parse::<i32>().unwrap(),
                 attach_type: caps["attack_type"].to_string(),
                 initiative: caps["initiative"].parse::<i32>().unwrap(),
@@ -117,16 +138,31 @@ fn parse_group(
 fn target_selection<'a>(groups: &HashMap<usize, Group>) -> HashMap<usize, usize> {
     let mut target_by_attacker = HashMap::new();
 
-    // let mut attackers: Vec<&Group> = groups.values().cloned();
-    let mut attackers = groups.values().cloned().collect::<Vec<_>>();
-    attackers.sort_by_key(|g| (Reverse(g.effective_power()), Reverse(g.initiative)));
+    let mut attacker_ids = groups
+        .values()
+        .map(|g| g.id)
+        .filter(|g| groups[g].units > 0)
+        .collect::<Vec<_>>();
 
-    let mut selected_targets = HashSet::new();
+    attacker_ids.sort_by_key(|g| {
+        (
+            Reverse(groups[g].effective_power()),
+            Reverse(groups[g].initiative),
+        )
+    });
 
-    for attacker in attackers.iter() {
-        let possible_targets: Vec<&Group> = attackers
-            .iter()
-            .filter(|t| t.group_type != attacker.group_type && !selected_targets.contains(&t.id))
+    let mut selected_targets: HashSet<usize> = HashSet::new();
+
+    for attacker_id in attacker_ids.iter() {
+        let attacker = &groups[attacker_id];
+
+        let possible_targets: Vec<&Group> = groups
+            .values()
+            .filter(|t| {
+                t.group_type != attacker.group_type
+                    && !selected_targets.contains(&t.id)
+                    && attacker.damage(t) > 0
+            })
             .collect();
 
         let target = possible_targets
@@ -161,12 +197,15 @@ fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, u
 
     for attacker_id in &attacker_ids {
         if let Some(target_id) = target_by_group.get(&attacker_id) {
-            let attacker = &groups[&attacker_id];
+            if !groups.contains_key(attacker_id) || !groups.contains_key(target_id) {
+                continue;
+            }
+            let attacker = &groups[attacker_id];
             let target = &groups[&target_by_group[&attacker.id]];
             let damage = attacker.damage(target);
 
+            let kill_units = attacker.kills_units(target);
             let target = groups.get_mut(target_id).unwrap();
-            let kill_units = (damage / target.hit_points).min(target.units);
             target.units -= kill_units;
 
             let attacker = &groups[&attacker_id];
@@ -179,6 +218,11 @@ fn attack(groups: &mut HashMap<usize, Group>, target_by_group: &HashMap<usize, u
                 damage,
                 kill_units
             );
+
+            if target.units <= 0 {
+                // Remove dead groups
+                groups.retain(|_, g| g.units > 0);
+            }
         }
     }
 }
@@ -245,6 +289,7 @@ fn main() {
         for g in groups.values() {
             if g.units > 0 {
                 *counts.entry(g.group_type).or_insert(0) += g.units;
+                println!("{:?}", g.units);
             }
         }
 
@@ -254,9 +299,12 @@ fn main() {
         if counts.len() < 2 {
             break;
         }
+        // Remove dead groups
+        // groups.retain(|_, g| g.units > 0);
     }
 
     println!("{:?}", counts);
 
+    // 22973 too high
     // 22904 too high
 }
